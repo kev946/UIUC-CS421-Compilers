@@ -1,0 +1,128 @@
+{
+
+open Mp6parse;;
+open Mp6common;;
+
+let line_count = ref 1
+let char_count = ref 1
+
+let cinc n = char_count := !char_count + n
+let linc n = line_count := (char_count := 1; !line_count + n)
+
+(* extra credit *)
+let cline_count = ref 1
+let cchar_count = ref 1 
+
+}
+(* You can assign names to commonly-used regular expressions in this part
+   of the code, to save the trouble of re-typing them each time they are used *)
+
+let numeric = ['0' - '9']
+let lowercase = ['a' - 'z']
+let letter =['a' - 'z' 'A' - 'Z' '_']
+
+rule token = parse
+  | [' ' '\t'] { token lexbuf }  (* skip over whitespace *)
+	| ['\n'] { linc 1; token lexbuf }
+  | eof             { EOF } 
+
+(* your rules go here *)
+  | ";;" { cinc 2; DBLSEMI }
+  | "+" { cinc 1; PLUS }
+	| "-" { cinc 1; MINUS }
+	| "*" { cinc 1; TIMES }
+	| "/" { cinc 1; DIV }
+	| "+." { cinc 2; DPLUS }
+	| "-." { cinc 2; DMINUS }
+	| "*." { cinc 2; DTIMES }
+	| "/." { cinc 2; DDIV }
+	| "^" { cinc 1; CARAT }
+	| "**" { cinc 2; EXP }
+	| "<" { cinc 1; LT }
+	| ">" { cinc 1; GT }
+	| "<=" { cinc 2; LEQ }
+	| ">=" { cinc 2; GEQ }
+	| "=" { cinc 1; EQUALS }
+	| "&&" { cinc 2; AND }
+	| "||" { cinc 2; OR }
+	| "|" { cinc 1; PIPE }
+	| "->" { cinc 2; ARROW }
+	| "::" { cinc 2; DCOLON }
+	| "let" { cinc 3; LET }
+	| "rec" { cinc 3; REC }
+	| ";" { cinc 1; SEMI }
+	| "in" { cinc 2; IN }
+	| "if" { cinc 2; IF }
+	| "then" { cinc 4; THEN }
+  | "else" { cinc 4; ELSE }
+  | "fun" { cinc 3; FUN }
+	| "[" { cinc 5; LBRAC }
+	| "]" { cinc 5; RBRAC }
+	| "(" { cinc 6; LPAREN }
+	| ")" { cinc 6; RPAREN }
+	| "," { cinc 5; COMMA }
+	| "_" { cinc 10; UNDERSCORE }
+	| (numeric+) as n { cinc (String.length n); INT(int_of_string n) }
+	| (numeric+)'.'(numeric*) as f { cinc (String.length f); FLOAT(float_of_string f) }
+	| "true" { cinc 4; BOOL(true) }
+	| "false" { cinc 5; BOOL(false) }
+	| "()" { cinc 2; UNIT }
+	| lowercase+letter*numeric* as s { cinc (String.length s); IDENT(s) }
+	| "//"[^'\n']*['\n'] as s { cinc (String.length s - 2 ); token lexbuf }
+	| "(*" { cline_count := !line_count; cchar_count := !char_count; lex_comment 0 lexbuf }
+	| "*)" { raise(CloseComm { line_num = !line_count; char_num = !char_count + 1 } ) }
+	| "**)" { raise(SuperCloseComm { line_num = !line_count; char_num = !char_count }) }
+	| "\"" { STRING(lex_string lexbuf) } 
+	
+	(* new comment entry point *)
+	and lex_comment n = parse
+	| eof { raise(OpenComm { line_num = !cline_count; char_num = !cchar_count }) }
+	| "**)" { cinc 3; token lexbuf }
+	| "(*" { cline_count := !line_count; cchar_count := !char_count; lex_comment (n+1) lexbuf }
+	| "*)" { cinc 2; if n > 0 then lex_comment(n-1) lexbuf else token lexbuf }
+	| _ { cinc 1; lex_comment n lexbuf }
+
+
+	(* new string entry point *)
+	and lex_string = parse	
+	| "\\\\" { cinc 4; "\\" ^ (lex_string lexbuf) }
+	| "\\'" { cinc 3; "\'" ^ (lex_string lexbuf) }
+	| "\\\"" { cinc 4; "\"" ^ (lex_string lexbuf) }
+	| "\\t" { cinc 3; "\t" ^ (lex_string lexbuf) }
+	| "\\n" { cinc 3; "\n" ^ (lex_string lexbuf) }
+	| "\\r" { cinc 3; "\r" ^ (lex_string lexbuf) }
+	| "\\" (['0' - '9']['0' - '9']['0' - '9'] as x) { cinc 5; (String.make 1 (char_of_int (int_of_string x))) ^ (lex_string lexbuf) }
+	| "\"" { "" } 
+	| ['#' - '~' '!' ' '] as s { cinc 1; (String.make 1 s) ^ (lex_string lexbuf) }
+
+
+
+(* do not modify this function: *)
+{ let lextest s = token (Lexing.from_string s)
+
+let opcom r = OPCOM(r.line_num,r.char_num)
+let clcom r = CLCOM(r.line_num,r.char_num)
+let sclcom r = SCLCOM(r.line_num,r.char_num)
+
+  let get_all_tokens s =
+      let _ = char_count := 1 in
+      let _ = line_count := 1 in
+      let b = Lexing.from_string (s^"\n") in
+      let rec g () = 
+      match token b with EOF -> []
+      | t -> t :: g () in
+      g ()
+
+let try_get_all_tokens s =
+    try Some (get_all_tokens s) with Failure "unmatched comment" -> None
+    	     			      	 | OpenComm r -> None
+    	     			      	 | CloseComm r -> None
+    	     			      	 | SuperCloseComm r -> None
+let try_comm_get_all_tokens s =
+    try Some (get_all_tokens s) with Failure "unmatched comment" -> None
+    	     			      	 | OpenComm r -> Some ([opcom r])
+    	     			      	 | CloseComm r -> Some ([clcom r])
+    	     			      	 | SuperCloseComm r -> Some ([sclcom r])
+
+ }
+

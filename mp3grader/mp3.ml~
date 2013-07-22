@@ -1,0 +1,55 @@
+(* CS 421 Fall 2011 MP3 *)
+
+open Mp3common
+
+(* Problem 1 *)
+let rec concat list = match list with [] -> "" |
+						h::t -> h ^ concat t;; 
+
+(* Problem 2 *)
+let rec part_concat list =	match list with [] -> [] |
+	h::t -> (h ^ concat t)::(part_concat t);; 
+
+(* Problem 3 helper *)
+let rec min_aux list f a = match list with [] -> a |
+							h::t -> min_aux t f (f a h);;
+
+(* Problem 3 *)
+let min list = let f a b = if a < b then a else b in if list = [] then -1 else min_aux list f max_int;; (* ghetto way of doing this *)
+
+(* Problem 4 *)
+let rec dup_aux list aux f = match list with [] -> aux |
+							h::t -> dup_aux t (aux @(f h)) f;;
+
+(* Problem 4 *)
+let dup list = let f h = h::h::[] in dup_aux list [] f;;
+
+(* Problem 5 *)
+let concat_base = "";;
+let concat_step x r = x ^ r;; 
+
+(* Problem 6 helper *)
+let min2_step x y = if x < y then x else y;;  
+
+(* Problem 6 *)
+let min2 list = if list = [] then -1 else List.fold_left min2_step max_int list;;
+
+(* Problem 7 *)
+let cross_sum xs ys = let f x = List.map ((+)x) ys in List.map f xs;;
+
+(* Problem 8 helper *)
+let calck_helper x y z k = addk x y subk z k;;
+
+(* Problem 8 *)
+let calck a b c d k =  addk a b calck_helper c d k;;
+
+let rec concat_k list k = match list with [] -> k "" |
+							h::t -> concat_k t (fun r -> concatk h r k);; 
+
+(* Problem 9 *)
+let rec part_concatk list k = match list with [] -> k [] |
+							h::t -> part_concatk t (fun r -> consk (concat_k list (fun r -> r)) r k);;  
+
+(* Problem 10 *)
+let rec dupk list k =
+	raise(Failure "Function not implemented yet.")

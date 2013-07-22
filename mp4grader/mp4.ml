@@ -1,0 +1,61 @@
+open Mp4common
+
+let rec import_list lst = match lst with [] -> ConExp Nil 
+						| x::xs -> BinExp(Cons, ConExp(Bool x), import_list xs);;
+
+let filter = RecExp("filter", "p", 
+			(* fun xs -> *)
+			FunExp("xs", 
+				(* if xs = [] then [] *)
+				IfExp(BinExp(Eq, VarExp "xs", ConExp Nil), ConExp Nil,
+
+					(* else if p (hd xs) *)
+					IfExp(BinExp(Eq, AppExp(VarExp "p", MonExp(Head, VarExp "xs")), ConExp(Bool true)), 
+
+					(* then hd xs :: filter xs *)
+					BinExp(Cons, MonExp(Head, VarExp "xs"), AppExp(AppExp(VarExp "filter", VarExp "p"), MonExp(Tail, VarExp "xs"))), 
+
+					(* else filter (t1 xs) *)
+					AppExp(AppExp(VarExp "filter", VarExp "p"), MonExp(Tail, VarExp "xs"))
+					)
+				)
+			), VarExp "filter");;
+
+let rec num_of_vars expression = 
+	match expression with ConExp(a) -> 0
+	| VarExp(a) -> 1
+	| LetExp(str, a, b) -> (num_of_vars a) + (num_of_vars b)
+	| RecExp(stra, strb, a, b) -> (num_of_vars a) + (num_of_vars b)
+	| OAppExp(a, b) -> (num_of_vars a) + (num_of_vars b)
+	| IfExp(a, b, c) -> (num_of_vars a) + (num_of_vars b) + (num_of_vars c)
+	| AppExp(a, b) -> (num_of_vars a) + (num_of_vars b)
+	| BinExp(bin, a, b) -> (num_of_vars a) + (num_of_vars b)
+	| MonExp(mon, a) -> (num_of_vars a)
+	| FunExp(str, a) -> (num_of_vars a);;
+
+let rec freeVars expression = 
+	match expression with ConExp(a) -> []
+	| VarExp(a) -> a::[]
+	| LetExp(stra, a, b) -> (freeVars(a)) @ (List.filter(fun x -> if x = stra then false else true)(freeVars(b)))
+	| RecExp(stra, strb, a, b) -> (List.filter(fun x -> if x = stra then false else true) 
+								  (List.filter(fun y -> if y = strb then false else true)
+							  	  (freeVars(a)))) 
+									@ (List.filter (fun x -> if x = stra then false else true)(freeVars(b)))
+	| OAppExp(a, b) -> (freeVars a) @ (freeVars b)
+	| IfExp(a, b, c) -> (freeVars a) @ (freeVars b) @ (freeVars c)
+	| AppExp(a, b) -> (freeVars a) @ (freeVars b)
+	| BinExp(bin, a, b) -> (freeVars a) @ (freeVars b)
+	| MonExp(mon, a) -> (freeVars a)
+	| FunExp(str, a) -> (List.filter(fun x -> if x = str then false else true)(freeVars(a)));;
+
+let rec cps expression cont =
+	match expression with VarExp(a) -> AppExp(cont, expression)
+	| BinExp(bin, a, b) -> let x = (freshFor ((freeVars cont) @ (freeVars a) @ (freeVars b))) in let y = (freshFor (x::((freeVars cont) @ (freeVars a) @ (freeVars b)))) in (cps  a (FunExp(x, (cps b (FunExp(y, AppExp(cont, BinExp(bin, VarExp x, VarExp y))))))))
+	| MonExp(mon, a) -> let x = (freshFor (freeVars cont)) in (cps a (FunExp(x, AppExp(cont, MonExp(mon, VarExp x)))))
+	| FunExp(a, b) -> let x = (freshFor (freeVars b)) in AppExp(cont, FunExp(a, FunExp(x, cps b (VarExp x))))
+	| LetExp(a, b, c) -> AppExp(FunExp(a, cps c cont), b)
+	| ConExp(a) -> AppExp(cont, expression)
+	| AppExp(a, b) -> let x = (freshFor ((freeVars cont) @ (freeVars a) @ (freeVars b))) in let y = (freshFor (x::((freeVars cont) @ (freeVars b) @ (freeVars a)))) in (cps a (FunExp(x, (cps b (FunExp(y, AppExp(AppExp(VarExp x, VarExp y), cont)))))))
+	| RecExp(a, b, c, d) -> let x = (freshFor (b::(a::(freeVars c)))) in RecExp(a, b, FunExp(x, cps c (VarExp x)), cps d cont)
+	| IfExp(guard, a, b) -> let x = (freshFor((freeVars cont) @ (freeVars guard) @ (freeVars a) @ (freeVars b))) in (cps guard (FunExp(x, IfExp(VarExp x, cps a cont, cps b cont))));;
+							  
